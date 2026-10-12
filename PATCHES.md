@@ -48,6 +48,7 @@ Columns:
 | Id | Title | Why | Upstreamable | Upstream PR |
 |---|---|---|---|---|
 | LG-0000 | Fork governance: this file, the NOTICE line | Loams owns a fork of Grafeo (owner, 2026-10-12) | no | - |
+| LG-0001 | Commit listener: `Session::set_commit_listener` hands each commit's epoch and CDC events to the caller | Loams captures each commit's change set; reading it back with `changes_between` races CDC eviction and costs a scan of the whole log (GR1 R9.9, R9.10 item 1, R0.5) | yes | - |
 
 ## Dropped
 

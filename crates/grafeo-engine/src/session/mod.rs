@@ -177,6 +177,9 @@ pub struct Session {
     /// Flushed to `cdc_log` on commit, discarded on rollback.
     #[cfg(feature = "cdc")]
     cdc_pending_events: Option<Arc<parking_lot::Mutex<Vec<crate::cdc::ChangeEvent>>>>,
+    /// Called with each committed transaction's epoch and events (LG-0001).
+    #[cfg(feature = "cdc")]
+    commit_listener: parking_lot::Mutex<Option<crate::cdc::CommitListener>>,
     /// Current graph name (for multi-graph USE GRAPH support). None = default graph.
     current_graph: parking_lot::Mutex<Option<String>>,
     /// Current schema name (ISO/IEC 39075 Section 4.7.3: independent from session graph).
@@ -296,6 +299,8 @@ impl Session {
             cdc_log: Arc::new(crate::cdc::CdcLog::new()),
             #[cfg(feature = "cdc")]
             cdc_pending_events: None,
+            #[cfg(feature = "cdc")]
+            commit_listener: parking_lot::Mutex::new(None),
             current_graph: parking_lot::Mutex::new(None),
             current_schema: parking_lot::Mutex::new(None),
             time_zone: parking_lot::Mutex::new(None),
@@ -441,6 +446,8 @@ impl Session {
             cdc_log: Arc::new(crate::cdc::CdcLog::new()),
             #[cfg(feature = "cdc")]
             cdc_pending_events: None,
+            #[cfg(feature = "cdc")]
+            commit_listener: parking_lot::Mutex::new(None),
             current_graph: parking_lot::Mutex::new(None),
             current_schema: parking_lot::Mutex::new(None),
             time_zone: parking_lot::Mutex::new(None),
@@ -740,6 +747,32 @@ impl Session {
     #[must_use]
     pub fn viewing_epoch(&self) -> Option<EpochId> {
         *self.viewing_epoch_override.lock()
+    }
+
+    /// Sets (or, with `None`, clears) the session's commit listener (Loams
+    /// patch LG-0001).
+    ///
+    /// The listener is called once for every transaction this session commits,
+    /// explicit or auto-commit, after the commit is complete, with the commit
+    /// epoch and the transaction's change events stamped with it. A committed
+    /// transaction that changed nothing (an explicit read-only transaction
+    /// also takes an epoch) is reported with no events, and so is every commit
+    /// of a session that does not record CDC. Rollbacks, failed commits and
+    /// nested commits (savepoint releases) are not reported.
+    ///
+    /// The events are handed over before the CDC log's retention or eviction
+    /// can prune them, so a consumer that needs every commit's changes does
+    /// not have to read them back with `changes_between`.
+    ///
+    /// Scope: labeled-property-graph commits, which go through the session's
+    /// commit path and its CDC buffer. RDF triple changes are recorded into
+    /// the CDC log directly by the RDF operators, and a SPARQL update outside
+    /// a transaction commits on its own, so neither is reported here (an
+    /// explicit transaction that changed only triples is reported with no
+    /// events).
+    #[cfg(feature = "cdc")]
+    pub fn set_commit_listener(&self, listener: Option<crate::cdc::CommitListener>) {
+        *self.commit_listener.lock() = listener;
     }
 
     /// Returns all versions of a node with their creation/deletion epochs.
@@ -4063,12 +4096,23 @@ impl Session {
         // All buffered events have PENDING epoch; assign the real commit_epoch.
         // Uses record_batch to acquire the write lock once per commit.
         #[cfg(feature = "cdc")]
+        let listener = self.commit_listener.lock().clone();
+        #[cfg(feature = "cdc")]
+        let mut committed_events = Vec::new();
+        #[cfg(feature = "cdc")]
         if let Some(ref pending) = self.cdc_pending_events {
-            let events: Vec<crate::cdc::ChangeEvent> = pending.lock().drain(..).collect();
-            self.cdc_log.record_batch(events.into_iter().map(|mut e| {
-                e.epoch = commit_epoch;
-                e
-            }));
+            let events: Vec<crate::cdc::ChangeEvent> = pending
+                .lock()
+                .drain(..)
+                .map(|mut e| {
+                    e.epoch = commit_epoch;
+                    e
+                })
+                .collect();
+            if listener.is_some() {
+                committed_events.clone_from(&events);
+            }
+            self.cdc_log.record_batch(events);
         }
 
         // Log transaction commit and epoch advance to WAL so that crash
@@ -4140,6 +4184,13 @@ impl Session {
                 let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
                 crate::metrics::record_metric!(self.metrics, tx_duration, observe duration_ms);
             }
+        }
+
+        // Last, so the listener sees a finished commit and a panic in it
+        // cannot leave the session half-committed.
+        #[cfg(feature = "cdc")]
+        if let Some(listener) = listener {
+            listener(commit_epoch, &committed_events);
         }
 
         Ok(())
