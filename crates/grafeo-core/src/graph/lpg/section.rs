@@ -177,10 +177,9 @@ impl Section for LpgStoreSection {
             })
             .collect();
 
-        #[cfg(feature = "temporal")]
+        // The epoch is carried in every build, so a reopened database
+        // continues its epochs (Loams patch LG-0006).
         let epoch = self.store.current_epoch().as_u64();
-        #[cfg(not(feature = "temporal"))]
-        let epoch = 0u64;
 
         block::write_blocks(&nodes, &edges, &named_graphs, epoch)
     }
@@ -191,10 +190,7 @@ impl Section for LpgStoreSection {
         block::read_blocks(data, &mut |nodes, edges, named_graphs, epoch| {
             populate_store(store, &nodes, &edges)?;
 
-            #[cfg(feature = "temporal")]
             store.sync_epoch(EpochId::new(epoch));
-            #[cfg(not(feature = "temporal"))]
-            let _ = epoch;
 
             for graph in &named_graphs {
                 store
@@ -202,7 +198,6 @@ impl Section for LpgStoreSection {
                     .map_err(|e| grafeo_common::utils::error::Error::Internal(e.to_string()))?;
                 if let Some(graph_store) = store.graph(&graph.name) {
                     populate_store(&graph_store, &graph.nodes, &graph.edges)?;
-                    #[cfg(feature = "temporal")]
                     graph_store.sync_epoch(EpochId::new(epoch));
                 }
             }

@@ -237,6 +237,16 @@ pub struct ChangeEvent {
     pub triple_graph: Option<String>,
 }
 
+/// A callback a [`Session`](crate::Session) calls once per committed transaction
+/// (Loams patch LG-0001), set with
+/// [`Session::set_commit_listener`](crate::Session::set_commit_listener).
+///
+/// It receives the transaction's commit epoch and the change events it
+/// recorded, stamped with that epoch: the same events the CDC log receives,
+/// handed over before any retention or eviction can prune them. Labeled
+/// property graph commits only: see `set_commit_listener` for the scope.
+pub type CommitListener = Arc<dyn Fn(EpochId, &[ChangeEvent]) + Send + Sync>;
+
 /// Configuration for CDC event retention.
 ///
 /// Controls how many events the CDC log keeps in memory. When limits are

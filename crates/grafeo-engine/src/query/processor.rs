@@ -115,6 +115,10 @@ pub struct QueryProcessor {
     optimizer: Optimizer,
     /// Current transaction context (if any).
     transaction_context: Option<(EpochId, TransactionId)>,
+    /// Wall-clock deadline for execution (LG-0002).
+    deadline: Option<std::time::Instant>,
+    /// The configured timeout behind `deadline`, for the error message.
+    query_timeout: Option<std::time::Duration>,
     /// RDF store for triple pattern queries (optional).
     #[cfg(feature = "triple-store")]
     rdf_store: Option<Arc<grafeo_core::graph::rdf::RdfStore>>,
@@ -136,6 +140,8 @@ impl QueryProcessor {
             catalog: Arc::new(Catalog::new()),
             optimizer,
             transaction_context: None,
+            deadline: None,
+            query_timeout: None,
             #[cfg(feature = "triple-store")]
             rdf_store: None,
         }
@@ -159,6 +165,8 @@ impl QueryProcessor {
             catalog: Arc::new(Catalog::new()),
             optimizer,
             transaction_context: None,
+            deadline: None,
+            query_timeout: None,
             #[cfg(feature = "triple-store")]
             rdf_store: None,
         }
@@ -184,6 +192,8 @@ impl QueryProcessor {
             catalog: Arc::new(Catalog::new()),
             optimizer,
             transaction_context: None,
+            deadline: None,
+            query_timeout: None,
             #[cfg(feature = "triple-store")]
             rdf_store: None,
         })
@@ -209,6 +219,8 @@ impl QueryProcessor {
             catalog: Arc::new(Catalog::new()),
             optimizer,
             transaction_context: None,
+            deadline: None,
+            query_timeout: None,
             #[cfg(feature = "triple-store")]
             rdf_store: None,
         })
@@ -225,6 +237,28 @@ impl QueryProcessor {
     ) -> Self {
         self.transaction_context = Some((viewing_epoch, transaction_id));
         self
+    }
+
+    /// Sets the wall-clock deadline execution must finish by, and the timeout
+    /// it came from (for the error message), as `Session::execute` applies the
+    /// session's `query_timeout` (Loams patch LG-0002). Without it a statement
+    /// processed here has no deadline.
+    #[must_use]
+    pub fn with_deadline(
+        mut self,
+        deadline: Option<std::time::Instant>,
+        query_timeout: Option<std::time::Duration>,
+    ) -> Self {
+        self.deadline = deadline;
+        self.query_timeout = query_timeout;
+        self
+    }
+
+    /// An executor for `columns` that enforces this processor's deadline.
+    fn executor(&self, columns: Vec<String>) -> Executor {
+        Executor::with_columns(columns)
+            .with_deadline(self.deadline)
+            .with_timeout_duration(self.query_timeout)
     }
 
     /// Sets a custom catalog.
@@ -350,7 +384,7 @@ impl QueryProcessor {
         let mut physical_plan = planner.plan(&optimized_plan)?;
 
         // 6. Execute and collect results
-        let executor = Executor::with_columns(physical_plan.columns.clone());
+        let executor = self.executor(physical_plan.columns.clone());
         let mut result = executor.execute(physical_plan.operator.as_mut())?;
 
         // Add execution metrics
@@ -454,6 +488,8 @@ impl QueryProcessor {
             catalog: Arc::new(Catalog::new()),
             optimizer,
             transaction_context: None,
+            deadline: None,
+            query_timeout: None,
             rdf_store: Some(rdf_store),
         }
     }
@@ -520,7 +556,7 @@ impl QueryProcessor {
             let (mut physical_plan, entries) = planner.plan_profiled(&optimized_plan)?;
 
             let start = std::time::Instant::now();
-            let executor = Executor::with_columns(physical_plan.columns.clone());
+            let executor = self.executor(physical_plan.columns.clone());
             let _result = executor.execute(physical_plan.operator.as_mut())?;
             let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
 
@@ -536,7 +572,7 @@ impl QueryProcessor {
         let mut physical_plan = planner.plan(&optimized_plan)?;
 
         // 5. Execute and collect results
-        let executor = Executor::with_columns(physical_plan.columns.clone());
+        let executor = self.executor(physical_plan.columns.clone());
         executor.execute(physical_plan.operator.as_mut())
     }
 

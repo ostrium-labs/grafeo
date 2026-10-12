@@ -878,20 +878,25 @@ impl LpgStore {
         labels: &[String],
         properties: Vec<(PropertyKey, Value)>,
     ) {
-        // Unmark deletion on version chain
+        // Unmark deletion on version chain. A node with no versions left was
+        // created by the transaction being rolled back and has been discarded
+        // with it: there is nothing to restore (LG-0004 lets a transaction
+        // delete the nodes it created).
         #[cfg(not(feature = "tiered-storage"))]
         {
             let mut nodes = self.nodes.write();
-            if let Some(chain) = nodes.get_mut(&node_id) {
-                chain.unmark_deleted_by(transaction_id);
-            }
+            let Some(chain) = nodes.get_mut(&node_id) else {
+                return;
+            };
+            chain.unmark_deleted_by(transaction_id);
         }
         #[cfg(feature = "tiered-storage")]
         {
             let mut versions = self.node_versions.write();
-            if let Some(index) = versions.get_mut(&node_id) {
-                index.unmark_deleted_by(transaction_id);
-            }
+            let Some(index) = versions.get_mut(&node_id) else {
+                return;
+            };
+            index.unmark_deleted_by(transaction_id);
         }
 
         // Restore label index entries
@@ -923,20 +928,24 @@ impl LpgStore {
         edge_type: &str,
         properties: Vec<(PropertyKey, Value)>,
     ) {
-        // Unmark deletion on version chain
+        // Unmark deletion on version chain. An edge with no versions left was
+        // created by the transaction being rolled back and has been discarded
+        // with it (LG-0004).
         #[cfg(not(feature = "tiered-storage"))]
         {
             let mut edges = self.edges.write();
-            if let Some(chain) = edges.get_mut(&edge_id) {
-                chain.unmark_deleted_by(transaction_id);
-            }
+            let Some(chain) = edges.get_mut(&edge_id) else {
+                return;
+            };
+            chain.unmark_deleted_by(transaction_id);
         }
         #[cfg(feature = "tiered-storage")]
         {
             let mut versions = self.edge_versions.write();
-            if let Some(index) = versions.get_mut(&edge_id) {
-                index.unmark_deleted_by(transaction_id);
-            }
+            let Some(index) = versions.get_mut(&edge_id) else {
+                return;
+            };
+            index.unmark_deleted_by(transaction_id);
         }
 
         // Restore adjacency (unmark soft-delete)

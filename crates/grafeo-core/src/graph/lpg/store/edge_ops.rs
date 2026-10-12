@@ -474,7 +474,10 @@ impl LpgStore {
         let mut edges = self.edges.write();
         if let Some(chain) = edges.get_mut(&id) {
             let (src, dst, type_id) = {
-                match chain.visible_at(epoch) {
+                // The transaction's own uncommitted edge counts: a transaction
+                // that creates an edge and then deletes it, or detaches its
+                // endpoint, must delete it (LG-0004).
+                match chain.visible_to(epoch, transaction_id) {
                     Some(record) => {
                         if record.is_deleted() {
                             return false;
@@ -548,7 +551,10 @@ impl LpgStore {
         let mut versions = self.edge_versions.write();
         if let Some(index) = versions.get_mut(&id) {
             let (src, dst, type_id) = {
-                match index.visible_at(epoch) {
+                // The transaction's own uncommitted edge counts: a transaction
+                // that creates an edge and then deletes it, or detaches its
+                // endpoint, must delete it (LG-0004).
+                match index.visible_to(epoch, transaction_id) {
                     Some(version_ref) => {
                         if let Some(record) = self.read_edge_record(&version_ref) {
                             if record.is_deleted() {

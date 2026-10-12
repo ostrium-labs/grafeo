@@ -632,7 +632,8 @@ impl LpgStore {
     ) -> bool {
         let mut nodes = self.nodes.write();
         if let Some(chain) = nodes.get_mut(&id) {
-            if let Some(record) = chain.visible_at(epoch) {
+            // The transaction's own uncommitted node counts (LG-0004).
+            if let Some(record) = chain.visible_to(epoch, transaction_id) {
                 if record.is_deleted() {
                     return false;
                 }
@@ -738,7 +739,8 @@ impl LpgStore {
     ) -> bool {
         let mut versions = self.node_versions.write();
         if let Some(index) = versions.get_mut(&id) {
-            if let Some(version_ref) = index.visible_at(epoch) {
+            // The transaction's own uncommitted node counts (LG-0004).
+            if let Some(version_ref) = index.visible_to(epoch, transaction_id) {
                 if let Some(record) = self.read_node_record(&version_ref) {
                     if record.is_deleted() {
                         return false;

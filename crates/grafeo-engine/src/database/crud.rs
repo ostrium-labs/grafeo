@@ -259,6 +259,34 @@ impl super::GrafeoDB {
         self.lpg_store().current_epoch()
     }
 
+    /// Moves the database's epoch forward to `epoch`; an epoch at or below the
+    /// current one changes nothing (Loams patch LG-0006).
+    ///
+    /// Direct store writes (`create_node`, `set_node_property`, ...) run outside
+    /// transactions and take no epoch. A caller that rebuilds a database from
+    /// its own log with them calls this with the log's last commit epoch, so
+    /// the database's next commit continues that log's epochs instead of
+    /// restarting at 1. With a WAL the new epoch is logged first, so it
+    /// survives a restart like a committed transaction's.
+    ///
+    /// # Errors
+    ///
+    /// Returns the WAL's error when the new epoch cannot be logged; the epoch
+    /// is then unchanged.
+    pub fn sync_epoch(
+        &self,
+        epoch: grafeo_common::types::EpochId,
+    ) -> grafeo_common::utils::error::Result<()> {
+        if epoch <= self.current_epoch() {
+            return Ok(());
+        }
+        #[cfg(feature = "wal")]
+        self.log_wal(&WalRecord::EpochAdvance { epoch })?;
+        self.lpg_store().sync_epoch(epoch);
+        self.transaction_manager.sync_epoch(epoch);
+        Ok(())
+    }
+
     /// Deletes a node. Its edges are not deleted: delete them first with
     /// [`delete_edge`](Self::delete_edge), or use `DETACH DELETE` in a query.
     ///
