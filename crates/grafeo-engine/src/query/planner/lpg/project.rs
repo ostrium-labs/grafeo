@@ -777,7 +777,7 @@ impl super::Planner {
             // (Generic vectors) preserves all value kinds: strings, maps,
             // node IDs, edge IDs. PropertyAccess handles Generic vectors
             // via get_node_id()/get_edge_id() fallback paths.
-            let pass_through_types = self.derive_schema_from_columns(&input_columns);
+            let pass_through_types = self.sort_input_schema(sort.input.as_ref(), &input_columns);
             for (i, _) in input_columns.iter().enumerate() {
                 projections.push(ProjectExpr::Column(i));
                 output_types.push(pass_through_types[i].clone());
@@ -852,7 +852,7 @@ impl super::Planner {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        let output_schema = self.derive_schema_from_columns(&output_columns);
+        let output_schema = self.sort_input_schema(sort.input.as_ref(), &output_columns);
         let mut operator: Box<dyn Operator> =
             Box::new(SortOperator::new(input_op, physical_keys, output_schema));
 
@@ -887,6 +887,28 @@ impl super::Planner {
             variable_columns,
             " for ORDER BY",
         )
+    }
+
+    /// The schema of a Sort or Top-K whose input is `input`, producing `columns`
+    /// (Loams patch LG-0003).
+    ///
+    /// A `Return` has already resolved its nodes and relationships into values
+    /// (`NodeResolve`/`EdgeResolve`), so every column it produces is `Any`.
+    /// Deriving the schema from the column names would type a returned
+    /// relationship `Edge` (its name is in `edge_columns`), and the sort would
+    /// then push each resolved relationship into an `EdgeId` vector, which
+    /// answers `0` for every one of them. Below a `Return` the columns still
+    /// hold raw ids, and the names decide as before.
+    pub(super) fn sort_input_schema(
+        &self,
+        input: &LogicalOperator,
+        columns: &[String],
+    ) -> Vec<LogicalType> {
+        if matches!(input, LogicalOperator::Return(_)) {
+            vec![LogicalType::Any; columns.len()]
+        } else {
+            self.derive_schema_from_columns(columns)
+        }
     }
 
     /// Derives a schema from column names using the planner's type tracking.
@@ -1281,7 +1303,7 @@ impl super::Planner {
             physical_keys = resolve_logical_to_physical_keys(&sort.keys, &actual_columns)?;
         }
 
-        let schema = self.derive_schema_from_columns(&columns);
+        let schema = self.sort_input_schema(sort.input.as_ref(), &columns);
         let op: Box<dyn Operator> = Box::new(grafeo_core::execution::operators::TopKOperator::new(
             input_op,
             physical_keys,
