@@ -51,6 +51,7 @@ Columns:
 | LG-0001 | Commit listener: `Session::set_commit_listener` hands each commit's epoch and CDC events to the caller | Loams captures each commit's change set; reading it back with `changes_between` races CDC eviction and costs a scan of the whole log (GR1 R9.9, R9.10 item 1, R0.5) | yes | - |
 | LG-0002 | `query_timeout` applies to statements with parameters: the query processor gets the session's deadline | `execute_with_params` had no deadline, so a parameterised statement ran past the timeout (GR1 R0.8, R5.8, Q679) | yes | - |
 | LG-0003 | ORDER BY keeps returned relationships: a Sort or Top-K over a `RETURN` types its columns `Any` | `RETURN r ORDER BY a.name` answered `INT64 0` for every relationship: the resolved relationship was pushed into an `EdgeId` vector (GR1 R7.6) | yes | - |
+| LG-0004 | `DETACH DELETE` (and `DELETE`) see the transaction's own uncommitted nodes and edges | A transaction that inserted an edge and then detached its endpoint committed a dangling edge; deleting a node created in the same transaction deleted nothing (GR1 R9.8) | yes | - |
 
 ## Dropped
 

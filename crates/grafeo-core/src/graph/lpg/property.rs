@@ -1676,13 +1676,22 @@ impl<Id: EntityId> PropertyColumn<Id> {
     }
 
     /// Removes a value by appending a tombstone (Null) at the given epoch.
+    ///
+    /// When the log ends in uncommitted (`PENDING`) entries, the tombstone
+    /// joins them at `PENDING`, so the log stays in epoch order and the
+    /// tombstone commits or rolls back with them. Before this, deleting an
+    /// element whose properties the same transaction had set appended an
+    /// older epoch after `PENDING` (a panic in debug builds), which Loams
+    /// patch LG-0004 makes reachable for elements the transaction created.
     pub fn remove(&mut self, id: Id, epoch: EpochId) -> Option<Value> {
         let previous = self.get(id);
         if previous.is_some() {
-            self.values
-                .entry(id)
-                .or_default()
-                .append(epoch, Value::Null);
+            let log = self.values.entry(id).or_default();
+            let epoch = match log.latest_epoch() {
+                Some(last) if last > epoch => last,
+                _ => epoch,
+            };
+            log.append(epoch, Value::Null);
             self.zone_map_dirty = true;
         }
         previous
