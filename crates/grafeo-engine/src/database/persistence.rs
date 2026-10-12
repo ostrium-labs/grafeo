@@ -33,7 +33,7 @@ struct Snapshot {
     rdf_named_graphs: Vec<RdfNamedGraphSnapshot>,
     schema: SnapshotSchema,
     indexes: SnapshotIndexes,
-    /// Current store epoch at snapshot time (0 when temporal is disabled).
+    /// Current epoch at snapshot time, restored on load in every build (LG-0006).
     epoch: u64,
 }
 
@@ -317,7 +317,6 @@ pub(super) fn load_snapshot_into_store(
 
     // Restore epoch from snapshot (store-level only; TransactionManager
     // sync is handled in with_config() after all recovery completes).
-    #[cfg(feature = "temporal")]
     store.sync_epoch(EpochId::new(snapshot.epoch));
 
     for graph in &snapshot.named_graphs {
@@ -326,7 +325,6 @@ pub(super) fn load_snapshot_into_store(
             .map_err(|e| Error::Internal(e.to_string()))?;
         if let Some(graph_store) = store.graph(&graph.name) {
             populate_store_from_snapshot_ref(&graph_store, &graph.nodes, &graph.edges)?;
-            #[cfg(feature = "temporal")]
             graph_store.sync_epoch(EpochId::new(snapshot.epoch));
         }
     }
@@ -909,10 +907,7 @@ impl super::GrafeoDB {
             rdf_named_graphs,
             schema,
             indexes,
-            #[cfg(feature = "temporal")]
             epoch: self.transaction_manager.current_epoch().as_u64(),
-            #[cfg(not(feature = "temporal"))]
-            epoch: 0,
         };
 
         let config = bincode::config::standard();
@@ -960,8 +955,7 @@ impl super::GrafeoDB {
         let db = Self::new_in_memory();
         populate_store_from_snapshot(db.lpg_store(), snapshot.nodes, snapshot.edges)?;
 
-        // Restore epoch from snapshot
-        #[cfg(feature = "temporal")]
+        // Restore epoch from snapshot (LG-0006: in every build)
         {
             let epoch = EpochId::new(snapshot.epoch);
             db.lpg_store().sync_epoch(epoch);
@@ -969,7 +963,6 @@ impl super::GrafeoDB {
         }
 
         // Capture epoch before moving snapshot fields
-        #[cfg(feature = "temporal")]
         let snapshot_epoch = EpochId::new(snapshot.epoch);
 
         // Restore named graphs
@@ -981,7 +974,6 @@ impl super::GrafeoDB {
                 populate_store_from_snapshot(&graph_store, ng.nodes, ng.edges)?;
                 // Named graph stores need the same epoch so temporal property
                 // lookups via current_epoch() return the correct values.
-                #[cfg(feature = "temporal")]
                 graph_store.sync_epoch(snapshot_epoch);
             }
         }
@@ -1015,6 +1007,10 @@ impl super::GrafeoDB {
     /// is left unchanged. If validation passes, the store is cleared and
     /// rebuilt from the snapshot atomically (from the perspective of
     /// subsequent queries).
+    ///
+    /// The database's epoch moves forward to the snapshot's, never back: a
+    /// snapshot older than the database's current epoch is restored, and the
+    /// next commit continues from the current epoch, so no epoch is reused.
     ///
     /// # Errors
     ///
@@ -1050,8 +1046,10 @@ impl super::GrafeoDB {
 
         populate_store_from_snapshot(self.lpg_store(), snapshot.nodes, snapshot.edges)?;
 
-        // Restore epoch from temporal snapshot
-        #[cfg(feature = "temporal")]
+        // Carry the snapshot's epoch forward (LG-0006: in every build). The
+        // epoch never moves back: restoring an older snapshot into a database
+        // that has committed since continues from the current epoch, so no
+        // epoch is ever reused.
         let snapshot_epoch = {
             let epoch = EpochId::new(snapshot.epoch);
             self.lpg_store().sync_epoch(epoch);
@@ -1066,7 +1064,6 @@ impl super::GrafeoDB {
                 .map_err(|e| Error::Internal(e.to_string()))?;
             if let Some(graph_store) = self.lpg_store().graph(&ng.name) {
                 populate_store_from_snapshot(&graph_store, ng.nodes, ng.edges)?;
-                #[cfg(feature = "temporal")]
                 graph_store.sync_epoch(snapshot_epoch);
             }
         }

@@ -432,6 +432,9 @@ impl GrafeoDB {
                             )?;
                         }
                     }
+                    // The checkpoint header's epoch, as in the writable branch (LG-0006).
+                    #[cfg(feature = "lpg")]
+                    store.sync_epoch(grafeo_common::types::EpochId::new(fm.active_header().epoch));
                     Some(Arc::new(fm))
                 } else {
                     return Err(grafeo_common::utils::error::Error::Internal(format!(
@@ -489,6 +492,11 @@ impl GrafeoDB {
                         )?;
                     }
                 }
+
+                // The checkpoint header records the epoch in every build, also
+                // in files whose data sections do not (LG-0006).
+                #[cfg(feature = "lpg")]
+                store.sync_epoch(grafeo_common::types::EpochId::new(fm.active_header().epoch));
 
                 // Recover sidecar WAL if WAL is enabled and a sidecar exists
                 #[cfg(all(feature = "wal", feature = "lpg"))]
@@ -588,8 +596,9 @@ impl GrafeoDB {
         let query_cache = Arc::new(QueryCache::default());
 
         // After all snapshot/WAL recovery, sync TransactionManager epoch
-        // with the store so queries use the correct viewing epoch.
-        #[cfg(all(feature = "temporal", feature = "lpg"))]
+        // with the store so queries use the correct viewing epoch, and so
+        // epochs continue across a reopen in every build (LG-0006).
+        #[cfg(feature = "lpg")]
         transaction_manager.sync_epoch(store.current_epoch());
 
         #[cfg(feature = "cdc")]
@@ -1366,9 +1375,12 @@ impl GrafeoDB {
                     // Transaction control records don't need replay action
                     // (recovery already filtered to only committed transactions)
                 }
-                WalRecord::EpochAdvance { .. } => {
-                    // Metadata record: no store mutation needed.
-                    // Used by incremental backup and point-in-time recovery.
+                WalRecord::EpochAdvance { epoch } => {
+                    // Metadata record: no data mutation. Used by incremental
+                    // backup and point-in-time recovery, and it carries the
+                    // committed epoch across a restart (LG-0006).
+                    store.sync_epoch(*epoch);
+                    target_store.sync_epoch(*epoch);
                 }
             }
         }
