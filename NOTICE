@@ -5,3 +5,9 @@ This product includes software developed at
 https://github.com/GrafeoDB/grafeo
 
 Licensed under the Apache License, Version 2.0.
+
+This copy is the Loams fork (https://github.com/ostrium-labs/grafeo), maintained
+by Ostrium Labs. It modifies Grafeo; every modification is listed in PATCHES.md
+and carries a `Loams-Patch:` trailer in its commit message.
+Modifications Copyright 2026 Ostrium Labs, licensed under the Apache License,
+Version 2.0.

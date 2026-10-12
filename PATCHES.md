@@ -1,0 +1,55 @@
+# Loams Grafeo patches
+
+`ostrium-labs/grafeo` is the Grafeo that Loams Graph (GR1) embeds. It is a
+fork of `GrafeoDB/grafeo` that tracks upstream releases: each upstream
+release Loams adopts gets a branch `loams/v<version>-patches`, started at the
+upstream tag, and the patches below are carried onto it. Releases are tagged
+`v<version>-loams.<n>` on that branch, and Loams pins the tag's commit by
+`git` + `rev`.
+
+Every change to Grafeo is a patch with an id `LG-<nnnn>` and a row below.
+Each commit of a patch carries the trailer `Loams-Patch: LG-<nnnn>` and a
+`Signed-off-by` (DCO).
+
+How to add a patch:
+
+1. Take the next free id.
+2. Add the row in the same pull request as the patch's first commit.
+3. Each patch is its own commit, with a test that fails before it and passes
+   after it. A patch that changes no code (this file, NOTICE, a design note
+   under `docs/loams/`) needs no test. Put `Loams-Patch: LG-<nnnn>` in the
+   commit message (`git commit -s` adds the sign-off below it).
+4. Open the pull request into `loams/v<version>-patches` and merge it with a
+   merge commit, so the commits and trailers reach the branch unchanged.
+5. Tag the merge `v<version>-loams.<n>` (tags are immutable), then bump the
+   pin in Loams.
+
+On a new upstream release: start `loams/v<new>-patches` at the upstream tag,
+cherry-pick (`-x`) every row whose upstream PR has not been released, keep the
+ids, and update the rows. A patch upstream has released is dropped (its row
+moves to `## Dropped`).
+
+Branches `main` and `loams/**` take no force-push and no deletion, and change
+only through pull requests (merge commits). Tags `v*-loams.*` cannot be moved
+or deleted. GitHub Actions are disabled on the fork for now; each patch's
+tests are run locally before its pull request (see the pull request body).
+
+Columns:
+
+- **Why**: the Loams finding that needs it (rulings in Loams'
+  `docs/plans/2026-10-08-gr1-graph-production.md`).
+- **Upstreamable**: `yes` when the change is a general fix upstream could take
+  as is, `no` when it is Loams' own behaviour.
+- **Upstream PR**: the pull request offered to `GrafeoDB/grafeo`, or `-`.
+  Offering a patch upstream is the owner's call.
+
+## Patches
+
+| Id | Title | Why | Upstreamable | Upstream PR |
+|---|---|---|---|---|
+| LG-0000 | Fork governance: this file, the NOTICE line | Loams owns a fork of Grafeo (owner, 2026-10-12) | no | - |
+
+## Dropped
+
+| Id | Title | Dropped in | Why |
+|---|---|---|---|
