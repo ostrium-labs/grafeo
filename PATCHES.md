@@ -53,6 +53,15 @@ Columns:
 | LG-0003 | ORDER BY keeps returned relationships: a Sort or Top-K over a `RETURN` types its columns `Any` | `RETURN r ORDER BY a.name` answered `INT64 0` for every relationship: the resolved relationship was pushed into an `EdgeId` vector (GR1 R7.6) | yes | - |
 | LG-0004 | `DETACH DELETE` (and `DELETE`) see the transaction's own uncommitted nodes and edges | A transaction that inserted an edge and then detached its endpoint committed a dangling edge; deleting a node created in the same transaction deleted nothing (GR1 R9.8) | yes | - |
 
+## Planned
+
+Ids taken by work that has a design but no code yet. A planned patch moves to
+the table above when its first code commit lands.
+
+| Id | Title | Why | Upstreamable | Design |
+|---|---|---|---|---|
+| LG-0005 | Snapshot isolation: a pinned session sees no later or uncommitted property, label or delete change, and `count(n)` agrees with the pin | Loams serialises reads behind a per-graph gate while a write is pending (GR1 R9.3) | yes | [docs/loams/LG-0005-snapshot-isolation.md](docs/loams/LG-0005-snapshot-isolation.md) |
+
 ## Dropped
 
 | Id | Title | Dropped in | Why |
