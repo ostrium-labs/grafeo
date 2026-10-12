@@ -3120,7 +3120,8 @@ impl Session {
                 Arc::clone(&active),
                 self.active_write_store(),
                 Arc::clone(&self.transaction_manager),
-            )?;
+            )?
+            .with_deadline(self.query_deadline(), self.query_timeout);
 
             // Apply transaction context if in a transaction
             let processor = if let Some(transaction_id) = transaction_id {
@@ -3727,7 +3728,8 @@ impl Session {
                 Arc::clone(&active),
                 self.active_write_store(),
                 Arc::clone(&self.transaction_manager),
-            )?;
+            )?
+            .with_deadline(self.query_deadline(), self.query_timeout);
             let processor = if let Some(transaction_id) = transaction_id {
                 processor.with_transaction_context(viewing_epoch, transaction_id)
             } else {
@@ -3802,7 +3804,8 @@ impl Session {
                             Arc::clone(&active),
                             self.active_write_store(),
                             Arc::clone(&self.transaction_manager),
-                        )?;
+                        )?
+                        .with_deadline(self.query_deadline(), self.query_timeout);
                         let (viewing_epoch, transaction_id) = self.get_transaction_context();
                         let processor = if let Some(transaction_id) = transaction_id {
                             processor.with_transaction_context(viewing_epoch, transaction_id)
