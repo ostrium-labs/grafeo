@@ -62,6 +62,7 @@ the table above when its first code commit lands.
 | Id | Title | Why | Upstreamable | Design |
 |---|---|---|---|---|
 | LG-0005 | Snapshot isolation: a pinned session sees no later or uncommitted property, label or delete change, and `count(n)` agrees with the pin | Loams serialises reads behind a per-graph gate while a write is pending (GR1 R9.3) | yes | [docs/loams/LG-0005-snapshot-isolation.md](docs/loams/LG-0005-snapshot-isolation.md) |
+| LG-0007 | An indexed equality lookup on a labelled scan checks the label per candidate | `MATCH (p:Person {uid: $id})` with an index on `uid` built a set of every `Person` per query to intersect the index hits with the label: one lookup cost O(persons), about 30 ms at 100,000 persons (Loams BQ1 graph benchmark, 2026-10-29) | yes | - |
 
 ## Dropped
 

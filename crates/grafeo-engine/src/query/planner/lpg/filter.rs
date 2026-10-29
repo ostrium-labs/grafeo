@@ -924,15 +924,10 @@ impl super::Planner {
                 .iter()
                 .map(|(p, v)| (p.as_str(), v.clone()))
                 .collect();
-            let mut nodes = self.store.find_nodes_by_properties(&conditions_ref);
-
-            // Intersect with label if present
-            if let Some(label) = &scan_label {
-                let label_nodes: std::collections::HashSet<_> =
-                    self.store.nodes_by_label(label).into_iter().collect();
-                nodes.retain(|n| label_nodes.contains(n));
-            }
-            nodes
+            // The label is checked per candidate in the visibility pass
+            // below (LG-0007): collecting every node of the label into a set
+            // made each indexed lookup O(nodes with the label).
+            self.store.find_nodes_by_properties(&conditions_ref)
         } else {
             // No index but we have a label: scan label first, then check properties.
             // This is more efficient than ScanOperator → DataChunk → FilterOperator
@@ -962,11 +957,21 @@ impl super::Planner {
 
         // MVCC visibility: filter out nodes not visible at the current epoch/tx.
         // Without this, rolled-back or uncommitted nodes could leak through.
+        // On the index path the scan's label is checked here too, on the
+        // node version this epoch sees (LG-0007).
         let epoch = self.viewing_epoch;
-        if let Some(tx) = self.transaction_id {
-            matching_nodes.retain(|id| self.store.get_node_versioned(*id, epoch, tx).is_some());
+        let label = if has_indexed_condition {
+            scan_label.as_deref()
         } else {
-            matching_nodes.retain(|id| self.store.get_node_at_epoch(*id, epoch).is_some());
+            None
+        };
+        let keep = |node: Option<grafeo_core::graph::lpg::Node>| {
+            node.is_some_and(|n| label.is_none_or(|l| n.has_label(l)))
+        };
+        if let Some(tx) = self.transaction_id {
+            matching_nodes.retain(|id| keep(self.store.get_node_versioned(*id, epoch, tx)));
+        } else {
+            matching_nodes.retain(|id| keep(self.store.get_node_at_epoch(*id, epoch)));
         }
 
         let columns = vec![scan_variable.clone()];
