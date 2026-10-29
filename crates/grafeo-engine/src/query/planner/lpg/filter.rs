@@ -1084,19 +1084,19 @@ impl super::Planner {
             }
         }
 
-        // Intersect with the label constraint, if any.
-        if let Some(label) = &scan_label {
-            let label_nodes: GrafeoSet<_> = self.store.nodes_by_label(label).into_iter().collect();
-            matching_nodes.retain(|n| label_nodes.contains(n));
-        }
-
         // MVCC visibility: drop nodes that aren't visible at the current
-        // epoch/tx, matching the equality fast path's semantics.
+        // epoch/tx, matching the equality fast path's semantics. The label
+        // constraint is checked here per candidate too (LG-0007), not by
+        // collecting every node of the label.
         let epoch = self.viewing_epoch;
+        let label = scan_label.as_deref();
+        let keep = |node: Option<grafeo_core::graph::lpg::Node>| {
+            node.is_some_and(|n| label.is_none_or(|l| n.has_label(l)))
+        };
         if let Some(tx) = self.transaction_id {
-            matching_nodes.retain(|id| self.store.get_node_versioned(*id, epoch, tx).is_some());
+            matching_nodes.retain(|id| keep(self.store.get_node_versioned(*id, epoch, tx)));
         } else {
-            matching_nodes.retain(|id| self.store.get_node_at_epoch(*id, epoch).is_some());
+            matching_nodes.retain(|id| keep(self.store.get_node_at_epoch(*id, epoch)));
         }
 
         // Absorbed-scan PROFILE entry: see `record_absorbed_scan_entry`.
