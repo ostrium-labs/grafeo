@@ -76,6 +76,27 @@ fn indexed_lookup_sees_a_label_removed_in_the_transaction() {
     assert_eq!(lookup(&db, 2), vec![vec![Value::from("p2")]]);
 }
 
+#[test]
+fn indexed_in_list_keeps_only_the_scanned_label() {
+    let db = graph(10);
+    let mut params = HashMap::new();
+    params.insert(
+        "ids".to_string(),
+        Value::from(vec![Value::Int64(1), Value::Int64(3)]),
+    );
+    let rows = db
+        .session()
+        .execute_with_params(
+            "MATCH (p:Person) WHERE p.uid IN $ids RETURN p.name ORDER BY p.name",
+            params,
+        )
+        .unwrap();
+    assert_eq!(
+        rows.rows().to_vec(),
+        vec![vec![Value::from("p1")], vec![Value::from("p3")]]
+    );
+}
+
 /// Median time of `n` lookups.
 fn median_lookup(db: &GrafeoDB, persons: i64, n: i64) -> Duration {
     let mut times: Vec<Duration> = (0..n)
